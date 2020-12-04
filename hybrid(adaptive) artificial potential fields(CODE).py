@@ -13,6 +13,47 @@ from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
+import serial 
+import argparse 
+from dronekit import connect, VehicleMode, InternalGlobalRelative, LocationGlobalRelative 
+from pymavlink import mavutil
+import time
+
+parser=argparse.ArgumentParser()
+parser.add_argument('--connect',default='127.0.0.1:14550')
+args=parser.parse_args()
+vehicle=connect(args.connect, baud=57600,wait_ready=True )
+ser=serial.Serial("/dev/ttyACM0",9600,timeout=1)
+
+# Function to arm and then takeoff to a user specified altitude
+def arm_and_takeoff(aTargetAltitude):
+
+  print "Basic pre-arm checks"
+  # Don't let the user try to arm until autopilot is ready
+  while not vehicle.is_armable:
+    print " Waiting for vehicle to initialise..."
+    time.sleep(1)
+        
+  print "Arming motors"
+  # Copter should arm in GUIDED mode
+  vehicle.mode    = VehicleMode("GUIDED")
+  vehicle.armed   = True
+
+  while not vehicle.armed:
+    print " Waiting for arming..."
+    time.sleep(1)
+
+  print "Taking off!"
+  vehicle.simple_takeoff(aTargetAltitude) # Take off to target altitude
+
+  # Check that vehicle has reached takeoff altitude
+  while True:
+    print " Altitude: ", vehicle.location.global_relative_frame.alt 
+    #Break and return from function just below target altitude.        
+    if vehicle.location.global_relative_frame.alt>=aTargetAltitude*0.95: 
+      print "Reached target altitude"
+      break
+    time.sleep(1)
 
 # Parameters
 KP = 5.0  # attractive potential gain
@@ -107,7 +148,21 @@ def oscillations_detection(previous_ids, ix, iy):
             previous_ids_set.add(index)
     return False
 
+def send_velocity(velocity_x, velocity_y, velocity_z, duration):
+    msg = vehicle.message_factory.set_position_target_local_ned_encode(
+        0,       # time_boot_ms (not used)
+        0, 0,    # target system, target component
+        mavutil.mavlink.MAV_FRAME_LOCAL_NED, # frame
+        0b0000111111000111, # type_mask (only speeds enabled)
+        0, 0, 0, # x, y, z positions (not used)
+        velocity_x, velocity_y, velocity_z, # x, y, z velocity in m/s
+        0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
+        0, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink) 
 
+    # send command to vehicle on 1 Hz cycle
+    for x in range(0,duration):
+        vehicle.send_mavlink(msg)
+        time.sleep(1)
 
 def potential_field_planning(sx, sy, gx, gy, ox, oy, reso, rr):
     
@@ -115,7 +170,7 @@ def potential_field_planning(sx, sy, gx, gy, ox, oy, reso, rr):
     pmap, minx, miny = calc_potential_field(gx, gy, ox, oy, reso, rr, sx, sy)
     initi_distX = 0
     initi_distY = 0
-
+     
     # search path
     d = np.hypot(sx - gx, sy - gy)
     ix = round((sx - minx) / reso)
@@ -138,10 +193,9 @@ def potential_field_planning(sx, sy, gx, gy, ox, oy, reso, rr):
 
     while d >= reso:
         #check if there is an obstacle
-        #if you are using this code in real time, in a robot, then remove the ox and oy list in the main function and add the code line to read sensor values
-        i = 100 #add sensor values
-        if i < 55:
-            oX.append(sx + i/100)
+        i = int(ser.readline().decode('utf-8').rstrip())
+        if i < 90:
+            oX.append(sx + i)
             oY.append(sy)
         else:
             dummy = 1
@@ -182,9 +236,8 @@ def potential_field_planning(sx, sy, gx, gy, ox, oy, reso, rr):
         sy = yp
         V_x = sx - initi_distX #speed in M/s
         V_y = sy - initi_distY #speed in M/s
-        #time_duration = 1
-        #
-        #
+        time_duration = 1
+        send_velocity(V_x,V_y,0,time_duration)
         print("velocity in x :", V_x)
         print("velocity in y :", V_y)
         print(sx)
@@ -216,23 +269,27 @@ def main():
     print("potential_field_planning start")
 
     sx = 0.0  # start x position [m]
-    sy = 10.0  # start y positon [m]
-    gx = 30.0  # goal x position [m]
-    gy = 30.0  # goal y position [m]
-    grid_size = 0.3  # potential grid size [m]
-    robot_radius = 1  # robot radius [m] = obstacle radius[m] + extra gap[m] + drone radius[m]
+    sy = 0.0  # start y positon [m]
+    gx = 4.0  # goal x position [m]
+    gy = 0.0  # goal y position [m]
+    grid_size = 0.5  # potential grid size [m]
+    robot_radius = 0.8  # robot radius [m] = obstacle radius[m] + extra gap[m] + drone radius[m]
 
-    ox = [15.0, 5.0, 20.0, 25.0]#oX #[14,15,16,14,15,16,14,15,16]  # obstacle x position list [m]
-    oy = [25.0, 15.0, 26.0, 25.0]#oY #[0,0,0,-0.5,-0.5,-0.5,0.5,0.5,0.5]  # obstacle y position list [m]
+    ox = oX #[14,15,16,14,15,16,14,15,16]  # obstacle x position list [m]
+    oy = oY #[0,0,0,-0.5,-0.5,-0.5,0.5,0.5,0.5]  # obstacle y position list [m]
     
     if show_animation:
         plt.grid(True)
         plt.axis("equal")
-
+    
     # path generation
+    arm_and_takeoff(1)
+    
     _, _ = potential_field_planning(
         sx, sy, gx, gy, ox, oy, grid_size, robot_radius)
-
+    
+    vehicle.mode = VehicleMode("LAND")
+    
     if show_animation:
         plt.show()
 
@@ -241,3 +298,4 @@ if __name__ == '__main__':
     print(__file__ + " start!!")
     main()
     print(__file__ + " Done!!")
+
