@@ -25,35 +25,10 @@ args=parser.parse_args()
 vehicle=connect(args.connect, baud=57600,wait_ready=True )
 ser=serial.Serial("/dev/ttyACM0",9600,timeout=1)
 
-# Function to arm and then takeoff to a user specified altitude
-def arm_and_takeoff(aTargetAltitude):
-
-  print "Basic pre-arm checks"
-  # Don't let the user try to arm until autopilot is ready
-  while not vehicle.is_armable:
-    print " Waiting for vehicle to initialise..."
-    time.sleep(1)
-        
-  print "Arming motors"
-  # Copter should arm in GUIDED mode
-  vehicle.mode    = VehicleMode("GUIDED")
-  vehicle.armed   = True
-
-  while not vehicle.armed:
-    print " Waiting for arming..."
-    time.sleep(1)
-
-  print "Taking off!"
-  vehicle.simple_takeoff(aTargetAltitude) # Take off to target altitude
-
-  # Check that vehicle has reached takeoff altitude
-  while True:
-    print " Altitude: ", vehicle.location.global_relative_frame.alt 
-    #Break and return from function just below target altitude.        
-    if vehicle.location.global_relative_frame.alt>=aTargetAltitude*0.95: 
-      print "Reached target altitude"
-      break
-    time.sleep(1)
+# first let's arm the vehicle with the RC controller and lift it to a required height"
+"""
+Drone takes off and reaches a height 
+"""
 
 # Parameters
 KP = 5.0  # attractive potential gain
@@ -148,22 +123,6 @@ def oscillations_detection(previous_ids, ix, iy):
             previous_ids_set.add(index)
     return False
 
-def send_velocity(velocity_x, velocity_y, velocity_z, duration):
-    msg = vehicle.message_factory.set_position_target_local_ned_encode(
-        0,       # time_boot_ms (not used)
-        0, 0,    # target system, target component
-        mavutil.mavlink.MAV_FRAME_LOCAL_NED, # frame
-        0b0000111111000111, # type_mask (only speeds enabled)
-        0, 0, 0, # x, y, z positions (not used)
-        velocity_x, velocity_y, velocity_z, # x, y, z velocity in m/s
-        0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
-        0, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink) 
-
-    # send command to vehicle on 1 Hz cycle
-    for x in range(0,duration):
-        vehicle.send_mavlink(msg)
-        time.sleep(1)
-
 def potential_field_planning(sx, sy, gx, gy, ox, oy, reso, rr):
     
     # calc potential field
@@ -236,8 +195,14 @@ def potential_field_planning(sx, sy, gx, gy, ox, oy, reso, rr):
         sy = yp
         V_x = sx - initi_distX #speed in M/s
         V_y = sy - initi_distY #speed in M/s
+        """
+        Over ride the RC using, dronekit channel overrides
+        Channel 2 = pitch , which controls the x velocity
+        Channel 1 = roll, which controls the y velocity
+        Pass the velocities in pwm valued, that are equivalent to the 0.5 m/s velocity by overriding the channels
+        """
         time_duration = 1
-        send_velocity(V_x,V_y,0,time_duration)
+        vehicle.channels.overrides = {'1':'pwm values', '2':'pwm value'}
         print("velocity in x :", V_x)
         print("velocity in y :", V_y)
         print(sx)
