@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Nov 23 00:13:50 2020
 
 @author: Nikhil
 @BINFORD ROBOTICS
