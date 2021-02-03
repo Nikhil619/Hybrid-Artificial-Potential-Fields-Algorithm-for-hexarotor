@@ -5,4 +5,4 @@
 # THIS CODE CAN BE USED FOR COMPLETE 360 degree INDOOR OBSTACLE AVOIDANCE
 # Please check the dronekit documentation to set the optical flow sensor up with the flight controller(pixhawk) using mission planner
 
-tool for rplidar - https://github.com/Slamtec/rplidar_sdk/releases
+# tool for rplidar - https://github.com/Slamtec/rplidar_sdk/releases
