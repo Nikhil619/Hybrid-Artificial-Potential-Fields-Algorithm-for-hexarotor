@@ -2,7 +2,6 @@
 """
 
 @author: Nikhil
-@BINFORD ROBOTICS
 
 Potential Field based planner
 
